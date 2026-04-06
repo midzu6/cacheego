@@ -25,7 +25,7 @@ func findCRLF(b []byte) int {
 
 func parseBulkString(b []byte) (n int, data []byte, err error) {
 	if len(b) == 0 || b[0] != '$' {
-		return 0, nil, fmt.Errorf("expected '$', got %q", b[0])
+		return 0, nil, fmt.Errorf("expected '$' got %q", b[0])
 	}
 	crlfPos := findCRLF(b[1:])
 	if crlfPos == -1 {

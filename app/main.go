@@ -61,7 +61,7 @@ func (s *Server) acceptLoop() error {
 			continue
 		}
 
-		slog.Info("client connected", "remote", conn.RemoteAddr().String())
+		slog.Info("Client connected", "remote", conn.RemoteAddr().String())
 		go s.handleConn(conn)
 	}
 	return nil
