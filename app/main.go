@@ -24,7 +24,9 @@ type Config struct {
 
 type Server struct {
 	Config
-	ln net.Listener
+	ln      net.Listener
+	mu      sync.RWMutex
+	Storage map[string][]byte
 }
 
 func NewServer(cfg Config) *Server {
@@ -32,7 +34,8 @@ func NewServer(cfg Config) *Server {
 		cfg.ListenAddr = *listen
 	}
 	return &Server{
-		Config: cfg,
+		Config:  cfg,
+		Storage: make(map[string][]byte),
 	}
 }
 
@@ -118,6 +121,33 @@ func (s *Server) handleConn(conn net.Conn) {
 				} else {
 					_, err = conn.Write(encodeBulkString(cmd.Args[0]))
 				}
+			case "SET":
+				if len(cmd.Args) < 2 {
+					slog.Error("invalid args length", "length", len(cmd.Args))
+					_, err = conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n"))
+					return
+				}
+				s.mu.Lock()
+				s.Storage[string(cmd.Args[0])] = cmd.Args[1]
+				s.mu.Unlock()
+				_, err = conn.Write([]byte("+OK\r\n"))
+
+			case "GET":
+				if len(cmd.Args) < 1 {
+					slog.Error("invalid args length", "length", len(cmd.Args))
+					_, err = conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n"))
+					return
+				}
+				s.mu.RLock()
+				val, ok := s.Storage[string(cmd.Args[0])]
+				s.mu.RUnlock()
+
+				if ok {
+					_, err = conn.Write(encodeBulkString(val))
+				} else {
+					_, err = conn.Write([]byte("$-1\r\n"))
+				}
+
 			default:
 				_, err = conn.Write([]byte("-ERR unknown command\r\n"))
 			}
