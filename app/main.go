@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 )
 
 var _ = net.Listen
@@ -17,47 +19,102 @@ var (
 	listen = flag.String("listen", ":6379", "address to listen to")
 )
 
-func run() (err error) {
-	l, err := net.Listen("tcp", *listen)
-	if err != nil {
-		return fmt.Errorf("failed to bind to port %s", *listen)
-	}
-	defer closeIt(l, &err, "close listener")
+type Config struct {
+	ListenAddr string
+}
 
-	slog.Info("server started", "addr", l.Addr().String())
+type Server struct {
+	Config
+	ln net.Listener
+}
 
-	conn, err := l.Accept()
-	if err != nil {
-		return fmt.Errorf("failed to accept: %w", err)
+func NewServer(cfg Config) *Server {
+	if len(cfg.ListenAddr) == 0 {
+		cfg.ListenAddr = *listen
 	}
+	return &Server{
+		Config: cfg,
+	}
+}
+
+func (s *Server) Start() error {
+	ln, err := net.Listen("tcp", s.Config.ListenAddr)
+	if err != nil {
+		return fmt.Errorf("failed to bind to port %s", s.Config.ListenAddr)
+	}
+	defer closeIt(ln, &err, "close listener")
+	slog.Info("server started", "addr", ln.Addr().String())
+
+	s.ln = ln
+	return s.acceptLoop()
+}
+
+func (s *Server) acceptLoop() error {
+	for {
+		conn, err := s.ln.Accept()
+
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				break
+			}
+			slog.Error("accept failed", "error", err)
+			continue
+		}
+
+		slog.Info("client connected", "remote", conn.RemoteAddr().String())
+		go s.handleConn(conn)
+	}
+	return nil
+}
+
+var bufPool = sync.Pool{New: func() interface{} {
+	return make([]byte, 512)
+}}
+
+func (s *Server) handleConn(conn net.Conn) {
+	var err error
+	var n int
 	defer closeIt(conn, &err, "close connection")
 
-	slog.Info("client connected", "remote", conn.RemoteAddr().String())
-
+	buf := bufPool.Get().([]byte)
+	defer bufPool.Put(buf)
+OuterLoop:
 	for {
-		buf := make([]byte, 512)
-		n, err := conn.Read(buf)
-
-		if err == io.EOF {
-			slog.Info("client disconnected", "remote", conn.RemoteAddr().String())
+		n, err = conn.Read(buf)
+		if errors.Is(err, io.EOF) {
+			slog.Info("connection closed")
 			break
 		}
 		if err != nil {
-			return fmt.Errorf("read error: %w", err)
+			slog.Error("read error", "err", err)
+			break
 		}
-
 		data := buf[:n]
 		slog.Debug("received bytes", "count", n)
+		countCmd := strings.Count(string(data), "PING\r\n")
 
-		countCommand := strings.Count(string(data), "PONG\r\n")
-		for i := 0; i <= countCommand; i++ {
+		for range countCmd {
 			_, err = conn.Write([]byte("+PONG\r\n"))
+
 			if err != nil {
-				return fmt.Errorf("failed to write response: %w", err)
+				slog.Error("write error", "err", err)
+				break OuterLoop
 			}
-			slog.Debug("sent PONG", "iteration", i+1)
 		}
 	}
+}
+
+func run() (err error) {
+	cfg := Config{
+		ListenAddr: *listen,
+	}
+	srv := NewServer(cfg)
+
+	err = srv.Start()
+	if err != nil {
+		return fmt.Errorf("cannot start server %w", err)
+	}
+
 	return nil
 }
 
