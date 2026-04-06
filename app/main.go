@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"strings"
 	"sync"
 )
 
@@ -73,32 +72,59 @@ var bufPool = sync.Pool{New: func() interface{} {
 
 func (s *Server) handleConn(conn net.Conn) {
 	var err error
-	var n int
 	defer closeIt(conn, &err, "close connection")
 
 	buf := bufPool.Get().([]byte)
 	defer bufPool.Put(buf)
-OuterLoop:
+
+	var leftover []byte
+
 	for {
-		n, err = conn.Read(buf)
+		n, err := conn.Read(buf)
 		if errors.Is(err, io.EOF) {
-			slog.Info("connection closed")
-			break
+			slog.Info("connection closed", "remote", conn.RemoteAddr())
+			return
 		}
 		if err != nil {
 			slog.Error("read error", "err", err)
-			break
+			return
 		}
-		data := buf[:n]
-		slog.Debug("received bytes", "count", n)
-		countCmd := strings.Count(string(data), "PING\r\n")
 
-		for range countCmd {
-			_, err = conn.Write([]byte("+PONG\r\n"))
+		data := append(leftover, buf[:n]...)
+		leftover = nil
+
+		pos := 0
+		for pos < len(data) {
+			consumed, cmd, parseErr := parseArray(data)
+
+			if errors.Is(parseErr, ErrIncompleteData) {
+				leftover = make([]byte, len(data[pos:]))
+				copy(leftover, data[pos:])
+				break
+			}
+			if parseErr != nil {
+				slog.Error("parse error", "err", parseErr)
+				return
+			}
+
+			pos += consumed
+
+			switch cmd.Name {
+			case "PING":
+				_, err = conn.Write([]byte("+PONG\r\n"))
+			case "ECHO":
+				if len(cmd.Args) == 0 {
+					_, err = conn.Write([]byte("-ERR wrong number of arguments for 'echo' command\r\n"))
+				} else {
+					_, err = conn.Write(encodeBulkString(cmd.Args[0]))
+				}
+			default:
+				_, err = conn.Write([]byte("-ERR unknown command\r\n"))
+			}
 
 			if err != nil {
 				slog.Error("write error", "err", err)
-				break OuterLoop
+				return
 			}
 		}
 	}
