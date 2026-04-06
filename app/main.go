@@ -8,7 +8,10 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
+	"time"
 )
 
 var _ = net.Listen
@@ -22,11 +25,16 @@ type Config struct {
 	ListenAddr string
 }
 
+type entry struct {
+	value     []byte
+	expiresAt time.Time
+}
+
 type Server struct {
 	Config
 	ln      net.Listener
 	mu      sync.RWMutex
-	storage map[string][]byte
+	storage map[string]entry
 }
 
 func NewServer(cfg Config) *Server {
@@ -35,7 +43,7 @@ func NewServer(cfg Config) *Server {
 	}
 	return &Server{
 		Config:  cfg,
-		storage: make(map[string][]byte),
+		storage: make(map[string]entry),
 	}
 }
 
@@ -122,15 +130,59 @@ func (s *Server) handleConn(conn net.Conn) {
 					_, err = conn.Write(encodeBulkString(cmd.Args[0]))
 				}
 			case "SET":
-				if len(cmd.Args) < 2 {
+				argLen := len(cmd.Args)
+				if argLen < 2 {
 					slog.Error("invalid args length", "length", len(cmd.Args))
 					_, err = conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n"))
 					continue
 				}
-				s.mu.Lock()
-				s.storage[string(cmd.Args[0])] = cmd.Args[1]
-				s.mu.Unlock()
-				_, err = conn.Write([]byte("+OK\r\n"))
+
+				if argLen > 2 {
+					for i := 2; i < len(cmd.Args); i += 2 {
+						if i+1 >= len(cmd.Args) {
+							slog.Error("invalid args length", "length", len(cmd.Args))
+							_, err = conn.Write([]byte("-ERR wrong number of arguments for 'set' command\r\n"))
+							break
+						}
+						if strings.ToUpper(string(cmd.Args[i])) == "EX" {
+							t, convErr := strconv.Atoi(string(cmd.Args[i+1]))
+							if convErr != nil {
+								slog.Error("invalid time", "err", err)
+								_, err = conn.Write([]byte("-ERR wrong time parameter for 'set' command\r\n"))
+								return
+							}
+							s.mu.Lock()
+							s.storage[string(cmd.Args[0])] = entry{
+								value:     cmd.Args[1],
+								expiresAt: time.Now().Add(time.Duration(t) * time.Second),
+							}
+							s.mu.Unlock()
+						} else if strings.ToUpper(string(cmd.Args[i])) == "PX" {
+							t, convErr := strconv.Atoi(string(cmd.Args[i+1]))
+							if convErr != nil {
+								slog.Error("invalid time", "err", err)
+								_, err = conn.Write([]byte("-ERR wrong time parameter for 'set' command\r\n"))
+								return
+							}
+							s.mu.Lock()
+							s.storage[string(cmd.Args[0])] = entry{
+								value:     cmd.Args[1],
+								expiresAt: time.Now().Add(time.Duration(t) * time.Millisecond),
+							}
+							s.mu.Unlock()
+						}
+					}
+					_, err = conn.Write([]byte("+OK\r\n"))
+
+				} else {
+					s.mu.Lock()
+					s.storage[string(cmd.Args[0])] = entry{
+						value: cmd.Args[1],
+					}
+					s.mu.Unlock()
+					_, err = conn.Write([]byte("+OK\r\n"))
+
+				}
 
 			case "GET":
 				if len(cmd.Args) < 1 {
@@ -138,14 +190,19 @@ func (s *Server) handleConn(conn net.Conn) {
 					_, err = conn.Write([]byte("-ERR wrong number of arguments for 'get' command\r\n"))
 					continue
 				}
+
 				s.mu.RLock()
-				val, ok := s.storage[string(cmd.Args[0])]
+				entr, ok := s.storage[string(cmd.Args[0])]
 				s.mu.RUnlock()
 
-				if ok {
-					_, err = conn.Write(encodeBulkString(val))
-				} else {
+				if !ok {
+					slog.Info("key not exists", "key", string(cmd.Args[0]))
 					_, err = conn.Write([]byte("$-1\r\n"))
+				} else if !entr.expiresAt.IsZero() && time.Now().After(entr.expiresAt) {
+					slog.Info("key expired", "key", string(cmd.Args[0]))
+					_, err = conn.Write([]byte("$-1\r\n"))
+				} else {
+					_, err = conn.Write(encodeBulkString(entr.value))
 				}
 
 			default:
