@@ -63,7 +63,7 @@ func (s *Server) cmdGet(args [][]byte) ([]byte, error) {
 
 	if !ok {
 		return nil, ErrKeyNotExists
-	} else if !entr.expiresAt.IsZero() && time.Now().After(entr.expiresAt) {
+	} else if entr.isExpired() {
 		return nil, ErrKeyIsExpired
 	} else {
 		return entr.value, nil

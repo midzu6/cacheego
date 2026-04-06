@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
 var _ = net.Listen
@@ -20,11 +22,15 @@ func run() (err error) {
 	}
 	srv := NewServer(cfg)
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
 	err = srv.Start()
 	if err != nil {
 		return fmt.Errorf("cannot start server %w", err)
 	}
-
+	<-sigCh
+	srv.Close()
 	return nil
 }
 

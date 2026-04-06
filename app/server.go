@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,15 +19,21 @@ type Server struct {
 	ln      net.Listener
 	mu      sync.RWMutex
 	storage map[string]Entry
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 func NewServer(cfg Config) *Server {
 	if len(cfg.ListenAddr) == 0 {
 		cfg.ListenAddr = *listen
 	}
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &Server{
 		Config:  cfg,
 		storage: make(map[string]Entry),
+		ctx:     ctx,
+		cancel:  cancel,
 	}
 }
 
@@ -39,7 +46,17 @@ func (s *Server) Start() error {
 	slog.Info("server started", "addr", ln.Addr().String())
 
 	s.ln = ln
+	go s.cleanupExpired()
+
 	return s.acceptLoop()
+}
+
+func (s *Server) Close() {
+	s.cancel()
+	err := s.ln.Close()
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) acceptLoop() error {
