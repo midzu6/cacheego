@@ -45,8 +45,8 @@ type ArrayValue struct {
 	data []Value
 }
 
-func (av ArrayValue) Type() Type     { return TypeArray }
-func (av ArrayValue) Bytes() []Value { return nil }
+func (av ArrayValue) Type() Type    { return TypeArray }
+func (av ArrayValue) Bytes() []byte { return nil }
 func (av ArrayValue) String() string {
 	if len(av.data) == 0 {
 		return "[]"
