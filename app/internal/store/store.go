@@ -13,6 +13,7 @@ type Store interface {
 	Set(key string, val RedisValue, ttl time.Duration)
 	Get(key string) (RedisValue, bool)
 	Delete(keys ...string) int64
+	StartExpiry(ctx context.Context)
 }
 
 type store struct {
@@ -85,7 +86,7 @@ func (s *store) StartExpiry(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			deleted := s.DeleteExpired()
+			deleted := s.deleteExpired()
 			if deleted > 0 {
 				slog.Info("deleted expired keys", "count", deleted)
 			}
@@ -93,7 +94,7 @@ func (s *store) StartExpiry(ctx context.Context) {
 	}
 }
 
-func (s *store) DeleteExpired() int64 {
+func (s *store) deleteExpired() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
