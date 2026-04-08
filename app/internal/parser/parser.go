@@ -66,9 +66,9 @@ func (p *Parser) parseArray() (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parse ArrayValue: %w", err)
 	}
-	count, convErr := strconv.Atoi(line)
+	count, convErr := strconv.ParseInt(line, 10, 64)
 	if convErr != nil {
-		return nil, fmt.Errorf("error convert string to int: %w", err)
+		return nil, fmt.Errorf("error convert string to int: %w", convErr)
 	}
 	if count == -1 {
 		return NullValue{}, nil // RESP null array
@@ -81,7 +81,7 @@ func (p *Parser) parseArray() (Value, error) {
 		}
 		items = append(items, val)
 	}
-	return ArrayValue{data: items}, nil
+	return ArrayValue{Data: items}, nil
 }
 
 func (p *Parser) ReadRequest() (*Request, error) {
@@ -93,13 +93,13 @@ func (p *Parser) ReadRequest() (*Request, error) {
 	if !ok {
 		return &Request{}, errors.New("ERR expected array command")
 	}
-	if len(arr.data) == 0 {
+	if len(arr.Data) == 0 {
 		return &Request{}, nil
 	}
 
-	nameValue := arr.data[0]
+	nameValue := arr.Data[0]
 	name := strings.ToUpper(strings.TrimSpace(nameValue.String()))
-	args := arr.data[1:]
+	args := arr.Data[1:]
 
 	return &Request{
 		Name: name,
@@ -112,7 +112,7 @@ func (p *Parser) parseSimpleString() (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parse SimpleStringValue: %w", err)
 	}
-	return SimpleStringValue{data: []byte(line)}, nil
+	return SimpleStringValue{Data: []byte(line)}, nil
 }
 
 func (p *Parser) parseBulkString() (Value, error) {
@@ -140,7 +140,7 @@ func (p *Parser) parseBulkString() (Value, error) {
 	if !(crlf[0] == '\r' && crlf[1] == '\n') {
 		return nil, fmt.Errorf("protocol error: expected \\r\\n")
 	}
-	return BulkStringValue{data: data}, nil
+	return BulkStringValue{Data: data}, nil
 }
 
 func (p *Parser) parseInteger() (Value, error) {
@@ -152,7 +152,7 @@ func (p *Parser) parseInteger() (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error convert string to int: %w", err)
 	}
-	return IntegerValue{value: num}, nil
+	return IntegerValue{Value: num}, nil
 }
 
 func (p *Parser) parseError() (Value, error) {
@@ -161,7 +161,7 @@ func (p *Parser) parseError() (Value, error) {
 		return nil, fmt.Errorf("error parse ErrorValue: %w", err)
 	}
 
-	return ErrorValue{message: line}, nil
+	return ErrorValue{Message: line}, nil
 }
 
 func (p *Parser) parseNull() (Value, error) {
@@ -184,10 +184,13 @@ func (p *Parser) Encode(v Value) ([]byte, error) {
 	case TypeInteger:
 		return []byte(":" + v.String() + "\r\n"), nil
 	case TypeArray:
-		arr := v.(ArrayValue).Elements()
+		arr, ok := v.(ArrayValue)
+		if !ok {
+			return nil, fmt.Errorf("expected ArrayValue")
+		}
 		var buf bytes.Buffer
-		buf.WriteString("*" + strconv.Itoa(len(arr)) + "\r\n")
-		for _, item := range arr {
+		buf.WriteString("*" + strconv.Itoa(len(arr.Elements())) + "\r\n")
+		for _, item := range arr.Elements() {
 			i, err := p.Encode(item)
 			if err != nil {
 				return nil, err
