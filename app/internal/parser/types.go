@@ -24,36 +24,36 @@ type Value interface {
 
 // BulkStringValue строка $
 type BulkStringValue struct {
-	data []byte
+	Data []byte
 }
 
 func (bsv BulkStringValue) Type() Type     { return TypeBulkString }
-func (bsv BulkStringValue) Bytes() []byte  { return bsv.data }
-func (bsv BulkStringValue) String() string { return string(bsv.data) }
+func (bsv BulkStringValue) Bytes() []byte  { return bsv.Data }
+func (bsv BulkStringValue) String() string { return string(bsv.Data) }
 
 // IntegerValue число :
 type IntegerValue struct {
-	value int64
+	Value int64
 }
 
 func (iv IntegerValue) Type() Type     { return TypeInteger }
 func (iv IntegerValue) Bytes() []byte  { return nil }
-func (iv IntegerValue) String() string { return strconv.FormatInt(iv.value, 10) }
+func (iv IntegerValue) String() string { return strconv.FormatInt(iv.Value, 10) }
 
 // ArrayValue массив *
 type ArrayValue struct {
-	data []Value
+	Data []Value
 }
 
 func (av ArrayValue) Type() Type    { return TypeArray }
 func (av ArrayValue) Bytes() []byte { return nil }
 func (av ArrayValue) String() string {
-	if len(av.data) == 0 {
+	if len(av.Data) == 0 {
 		return "[]"
 	}
 	sb := strings.Builder{}
 	sb.WriteString("[")
-	for i, item := range av.data {
+	for i, item := range av.Data {
 		if i > 0 {
 			sb.WriteString(", ")
 		}
@@ -63,26 +63,26 @@ func (av ArrayValue) String() string {
 	return sb.String()
 }
 func (av ArrayValue) Elements() []Value {
-	return av.data
+	return av.Data
 }
 
 // SimpleStringValue простая строка +
 type SimpleStringValue struct {
-	data []byte
+	Data []byte
 }
 
 func (ssv SimpleStringValue) Type() Type     { return TypeSimpleString }
-func (ssv SimpleStringValue) Bytes() []byte  { return ssv.data }
-func (ssv SimpleStringValue) String() string { return string(ssv.data) }
+func (ssv SimpleStringValue) Bytes() []byte  { return ssv.Data }
+func (ssv SimpleStringValue) String() string { return string(ssv.Data) }
 
 // ErrorValue ошибка -
 type ErrorValue struct {
-	message string
+	Message string
 }
 
 func (ev ErrorValue) Type() Type     { return TypeError }
 func (ev ErrorValue) Bytes() []byte  { return nil }
-func (ev ErrorValue) String() string { return ev.message }
+func (ev ErrorValue) String() string { return ev.Message }
 
 // NullValue null _
 type NullValue struct{}
