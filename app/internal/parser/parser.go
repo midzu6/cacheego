@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -34,15 +35,15 @@ func (p *Parser) ReadValue() (Value, error) {
 	case '*':
 		return p.parseArray()
 	case '$':
-		return parseBulkString(p.r)
+		return p.parseBulkString()
 	case ':':
-		return parseInteger(p.r)
+		return p.parseInteger()
 	case '-':
-		return parseError(p.r)
+		return p.parseError()
 	case '+':
-		return parseSimpleString(p.r)
+		return p.parseSimpleString()
 	case '_':
-		return parseNull(p.r)
+		return p.parseNull()
 	default:
 		return ErrorValue{"ERR unknown RESP type"}, nil
 	}
@@ -63,11 +64,11 @@ func readLine(r *bufio.Reader) (string, error) {
 func (p *Parser) parseArray() (Value, error) {
 	line, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse ArrayValue")
+		return nil, fmt.Errorf("error parse ArrayValue: %w", err)
 	}
 	count, convErr := strconv.Atoi(line)
 	if convErr != nil {
-		return nil, fmt.Errorf("error convert string to int")
+		return nil, fmt.Errorf("error convert string to int: %w", err)
 	}
 	if count == -1 {
 		return NullValue{}, nil // RESP null array
@@ -106,30 +107,33 @@ func (p *Parser) ReadRequest() (*Request, error) {
 	}, nil
 }
 
-func parseSimpleString(r *bufio.Reader) (Value, error) {
-	line, err := readLine(r)
+func (p *Parser) parseSimpleString() (Value, error) {
+	line, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse SimpleStringValue")
+		return nil, fmt.Errorf("error parse SimpleStringValue: %w", err)
 	}
 	return SimpleStringValue{data: []byte(line)}, nil
 }
 
-func parseBulkString(r *bufio.Reader) (Value, error) {
-	line, err := readLine(r)
+func (p *Parser) parseBulkString() (Value, error) {
+	line, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse BulkStringValue")
+		return nil, fmt.Errorf("error parse BulkStringValue: %w", err)
 	}
-	n, err := strconv.Atoi(line)
+	if line == "-1" {
+		return NullValue{}, nil
+	}
+	n, err := strconv.ParseInt(line, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("error convert string to int")
+		return nil, fmt.Errorf("error convert string to int: %w", err)
 	}
 	data := make([]byte, n)
-	_, err = io.ReadFull(r, data)
+	_, err = io.ReadFull(p.r, data)
 	if err != nil {
 		return nil, err
 	}
 	crlf := make([]byte, 2)
-	_, err = io.ReadFull(r, crlf)
+	_, err = io.ReadFull(p.r, crlf)
 	if err != nil {
 		return nil, err
 	}
@@ -139,31 +143,61 @@ func parseBulkString(r *bufio.Reader) (Value, error) {
 	return BulkStringValue{data: data}, nil
 }
 
-func parseInteger(r *bufio.Reader) (Value, error) {
-	line, err := readLine(r)
+func (p *Parser) parseInteger() (Value, error) {
+	line, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse IntegerValue")
+		return nil, fmt.Errorf("error parse IntegerValue: %w", err)
 	}
-	num, err := strconv.Atoi(line)
+	num, err := strconv.ParseInt(line, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("error convert string to int")
+		return nil, fmt.Errorf("error convert string to int: %w", err)
 	}
-	return IntegerValue{value: int64(num)}, nil
+	return IntegerValue{value: num}, nil
 }
 
-func parseError(r *bufio.Reader) (Value, error) {
-	line, err := readLine(r)
+func (p *Parser) parseError() (Value, error) {
+	line, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse ErrorValue")
+		return nil, fmt.Errorf("error parse ErrorValue: %w", err)
 	}
 
 	return ErrorValue{message: line}, nil
 }
 
-func parseNull(r *bufio.Reader) (Value, error) {
-	_, err := readLine(r)
+func (p *Parser) parseNull() (Value, error) {
+	_, err := readLine(p.r)
 	if err != nil {
-		return nil, fmt.Errorf("error parse NullValue")
+		return nil, fmt.Errorf("error parse NullValue: %w", err)
 	}
 	return NullValue{}, nil
+}
+
+func (p *Parser) Encode(v Value) ([]byte, error) {
+	switch v.Type() {
+	case TypeSimpleString:
+		return []byte("+" + v.String() + "\r\n"), nil
+	case TypeError:
+		return []byte("-" + v.String() + "\r\n"), nil
+	case TypeBulkString:
+		data := v.Bytes()
+		return []byte("$" + strconv.Itoa(len(data)) + "\r\n" + string(data) + "\r\n"), nil
+	case TypeInteger:
+		return []byte(":" + v.String() + "\r\n"), nil
+	case TypeArray:
+		arr := v.(ArrayValue).Elements()
+		var buf bytes.Buffer
+		buf.WriteString("*" + strconv.Itoa(len(arr)) + "\r\n")
+		for _, item := range arr {
+			i, err := p.Encode(item)
+			if err != nil {
+				return nil, err
+			}
+			buf.Write(i)
+		}
+		return buf.Bytes(), nil
+	case TypeNull:
+		return []byte("$-1\r\n"), nil
+	default:
+		return nil, fmt.Errorf("unknown value type: %s", v.Type())
+	}
 }
