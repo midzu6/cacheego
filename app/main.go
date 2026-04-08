@@ -26,6 +26,7 @@ func main() {
 	reg.Register(&commands.SetCommand{})
 	reg.Register(&commands.GetCommand{})
 	reg.Register(&commands.DeleteCommand{})
+	reg.Register(&commands.RpushCommand{})
 
 	srv := server.New(server.Config{ListenAddr: *listen}, st, reg)
 

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ type Store interface {
 	Get(key string) (RedisValue, bool)
 	Delete(keys ...string) int64
 	StartExpiry(ctx context.Context)
+	RPush(key string, values ...string) (int64, error)
 }
 
 type store struct {
@@ -109,4 +111,40 @@ func (s *store) deleteExpired() int64 {
 		}
 	}
 	return count
+}
+
+func (s *store) RPush(key string, values ...string) (int64, error) {
+	return s.push(key, values, false)
+}
+
+func (s *store) LPush(key string, values ...string) (int64, error) {
+	return s.push(key, values, true)
+}
+
+func (s *store) push(key string, values []string, left bool) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var lv ListValue
+	val, exist := s.data[key]
+	if !exist {
+		lv = NewListValue()
+	} else {
+		var ok bool
+		lv, ok = val.(ListValue)
+		if !ok {
+			return 0, errors.New("ERR WRONG TYPE Operation against a key holding the wrong kind of value")
+		}
+	}
+	if left {
+		for _, v := range values {
+			lv.Data.PushFront(v)
+		}
+	} else {
+		for _, v := range values {
+			lv.Data.PushBack(v)
+		}
+	}
+	s.data[key] = lv
+	return lv.Size(), nil
 }

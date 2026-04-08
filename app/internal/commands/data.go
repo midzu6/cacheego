@@ -84,7 +84,7 @@ func (gc *GetCommand) Execute(args []parser.Value, st store.Store) (parser.Value
 	if !ok {
 		return parser.NullValue{}, nil
 	}
-	return parser.BulkStringValue{Data: val.Bytes()}, nil
+	return parser.BulkStringValue{Data: val.(store.StringValue).Bytes()}, nil
 }
 
 type DeleteCommand struct{}
@@ -99,4 +99,26 @@ func (dc *DeleteCommand) Execute(args []parser.Value, st store.Store) (parser.Va
 	count := st.Delete(keys...)
 	return parser.IntegerValue{Value: count}, nil
 
+}
+
+type RpushCommand struct{}
+
+func (rp *RpushCommand) Name() string { return "RPUSH" }
+
+func (rp *RpushCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+
+	if len(args) < 2 {
+		return nil, errors.New("ERR wrong number of arguments for 'RPUSH' command")
+	}
+	key := args[0].String()
+	values := make([]string, 0, len(args)-1)
+	for _, arg := range args[1:] {
+		values = append(values, arg.String())
+	}
+	newLen, err := st.RPush(key, values...)
+	if err != nil {
+		return nil, err
+	}
+
+	return parser.IntegerValue{Value: newLen}, nil
 }
