@@ -1,9 +1,13 @@
 package store
 
 import (
+	"context"
+	"log/slog"
 	"sync"
 	"time"
 )
+
+const tickDuration = 10 * time.Second
 
 type Store interface {
 	Set(key string, val RedisValue, ttl time.Duration)
@@ -71,4 +75,37 @@ func (s *store) Delete(keys ...string) int64 {
 		}
 	}
 	return deletedCount
+}
+
+func (s *store) StartExpiry(ctx context.Context) {
+	ticker := time.NewTicker(tickDuration)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			deleted := s.DeleteExpired()
+			if deleted > 0 {
+				slog.Info("deleted expired keys", "count", deleted)
+			}
+		}
+	}
+}
+
+func (s *store) DeleteExpired() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	t := time.Now()
+	var count int64
+
+	for key, val := range s.expiry {
+		if t.After(val) {
+			delete(s.data, key)
+			delete(s.expiry, key)
+			count++
+		}
+	}
+	return count
 }
