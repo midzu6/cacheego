@@ -6,6 +6,9 @@ import (
 )
 
 type Store interface {
+	Set(key string, val RedisValue, ttl time.Duration)
+	Get(key string) (RedisValue, bool)
+	Delete(key string)
 }
 
 type store struct {
