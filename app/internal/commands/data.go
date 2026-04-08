@@ -11,6 +11,28 @@ import (
 	"github.com/codecrafters-io/redis-starter-go/app/internal/store"
 )
 
+type pingCommand struct{}
+
+func (pingCommand) Name() string { return "PING" }
+
+func (pingCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+	if len(args) == 0 {
+		return parser.SimpleStringValue{Data: []byte("PONG")}, nil
+	}
+	return parser.BulkStringValue{Data: args[0].Bytes()}, nil
+}
+
+type echoCommand struct{}
+
+func (echoCommand) Name() string { return "ECHO" }
+
+func (echoCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+	if len(args) == 0 {
+		return nil, errors.New("ERR wrong number of arguments for 'echo' command")
+	}
+	return parser.BulkStringValue{Data: args[0].Bytes()}, nil
+}
+
 type setCommand struct{}
 
 func (c *setCommand) Name() string { return "SET" }
