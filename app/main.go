@@ -3,44 +3,43 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
+
+	"github.com/codecrafters-io/redis-starter-go/app/internal/commands"
+	"github.com/codecrafters-io/redis-starter-go/app/internal/server"
+	"github.com/codecrafters-io/redis-starter-go/app/internal/store"
 )
 
-var _ = net.Listen
-var _ = os.Exit
+var listen = flag.String("listen", ":6379", "address to listen to")
 
-var (
-	listen = flag.String("listen", ":6379", "address to listen to")
-)
+func main() {
+	flag.Parse()
 
-func run() (err error) {
-	cfg := Config{
-		ListenAddr: *listen,
-	}
-	srv := NewServer(cfg)
+	// Создаём компоненты
+	st := store.NewStore()
+
+	reg := commands.NewRegistry()
+	reg.Register(&commands.PingCommand{})
+	reg.Register(&commands.EchoCommand{})
+	reg.Register(&commands.SetCommand{})
+	reg.Register(&commands.GetCommand{})
+	reg.Register(&commands.DeleteCommand{})
+
+	srv := server.New(server.Config{ListenAddr: *listen}, st, reg)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
-	err = srv.Start()
-	if err != nil {
-		return fmt.Errorf("cannot start server %w", err)
-	}
+	go func() {
+		if err := srv.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+			os.Exit(1)
+		}
+	}()
+
 	<-sigCh
+	fmt.Println("\nShutting down gracefully")
 	srv.Close()
-	return nil
-}
-
-func main() {
-
-	flag.Parse()
-
-	err := run()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
 }

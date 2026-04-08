@@ -11,33 +11,33 @@ import (
 	"github.com/codecrafters-io/redis-starter-go/app/internal/store"
 )
 
-type pingCommand struct{}
+type PingCommand struct{}
 
-func (pingCommand) Name() string { return "PING" }
+func (PingCommand) Name() string { return "PING" }
 
-func (pingCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+func (PingCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
 	if len(args) == 0 {
 		return parser.SimpleStringValue{Data: []byte("PONG")}, nil
 	}
 	return parser.BulkStringValue{Data: args[0].Bytes()}, nil
 }
 
-type echoCommand struct{}
+type EchoCommand struct{}
 
-func (echoCommand) Name() string { return "ECHO" }
+func (EchoCommand) Name() string { return "ECHO" }
 
-func (echoCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+func (EchoCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
 	if len(args) == 0 {
 		return nil, errors.New("ERR wrong number of arguments for 'echo' command")
 	}
 	return parser.BulkStringValue{Data: args[0].Bytes()}, nil
 }
 
-type setCommand struct{}
+type SetCommand struct{}
 
-func (c *setCommand) Name() string { return "SET" }
+func (c *SetCommand) Name() string { return "SET" }
 
-func (c *setCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+func (c *SetCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
 
 	if len(args) < 2 {
 		return nil, errors.New("ERR wrong number of arguments for 'set' command")
@@ -73,11 +73,11 @@ func (c *setCommand) Execute(args []parser.Value, st store.Store) (parser.Value,
 	return parser.SimpleStringValue{Data: []byte("OK")}, nil
 }
 
-type getCommand struct{}
+type GetCommand struct{}
 
-func (gc *getCommand) Name() string { return "GET" }
+func (gc *GetCommand) Name() string { return "GET" }
 
-func (gc *getCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+func (gc *GetCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
 	key := args[0].String()
 	val, ok := st.Get(key)
 
@@ -87,11 +87,11 @@ func (gc *getCommand) Execute(args []parser.Value, st store.Store) (parser.Value
 	return parser.BulkStringValue{Data: val.Bytes()}, nil
 }
 
-type deleteCommand struct{}
+type DeleteCommand struct{}
 
-func (dc *deleteCommand) Name() string { return "DEL" }
+func (dc *DeleteCommand) Name() string { return "DEL" }
 
-func (dc *deleteCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+func (dc *DeleteCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
 	keys := make([]string, 0, len(args))
 	for _, v := range args {
 		keys = append(keys, v.String())
