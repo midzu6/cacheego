@@ -8,7 +8,7 @@ import (
 type Store interface {
 	Set(key string, val RedisValue, ttl time.Duration)
 	Get(key string) (RedisValue, bool)
-	Delete(key string)
+	Delete(keys ...string) int64
 }
 
 type store struct {
@@ -43,7 +43,7 @@ func (s *store) Get(key string) (RedisValue, bool) {
 
 	val, exist := s.data[key]
 
-	if exist {
+	if !exist {
 		return nil, false
 	}
 
@@ -57,10 +57,18 @@ func (s *store) Get(key string) (RedisValue, bool) {
 	return val, true
 }
 
-func (s *store) Delete(key string) {
+func (s *store) Delete(keys ...string) int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	delete(s.data, key)
-	delete(s.expiry, key)
+	var deletedCount int64
+
+	for _, key := range keys {
+		if _, exist := s.data[key]; exist {
+			delete(s.data, key)
+			delete(s.expiry, key)
+			deletedCount++
+		}
+	}
+	return deletedCount
 }
