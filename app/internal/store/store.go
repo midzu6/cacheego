@@ -12,7 +12,55 @@ type Store interface {
 }
 
 type store struct {
-	data map[string]RedisValue
-	ttl  map[string]time.Time
-	mu   sync.RWMutex
+	data   map[string]RedisValue
+	expiry map[string]time.Time
+	mu     sync.RWMutex
+}
+
+func NewStore() Store {
+	return &store{
+		data:   make(map[string]RedisValue),
+		expiry: make(map[string]time.Time),
+	}
+}
+
+func (s *store) Set(key string, val RedisValue, ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.data[key] = val
+
+	if ttl > 0 {
+		s.expiry[key] = time.Now().Add(ttl)
+	} else {
+		delete(s.expiry, key)
+	}
+}
+
+func (s *store) Get(key string) (RedisValue, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	val, exist := s.data[key]
+
+	if exist {
+		return nil, false
+	}
+
+	if timeExp, ok := s.expiry[key]; ok {
+		if time.Now().After(timeExp) {
+			delete(s.data, key)
+			delete(s.expiry, key)
+			return nil, false
+		}
+	}
+	return val, true
+}
+
+func (s *store) Delete(key string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	delete(s.data, key)
+	delete(s.expiry, key)
 }
