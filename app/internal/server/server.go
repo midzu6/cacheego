@@ -38,7 +38,7 @@ func New(cfg Config, st store.Store, reg *commands.Registry) *Server {
 		Config:   cfg,
 		store:    st,
 		registry: reg,
-		parser:   parser.NewParser(nil),
+		parser:   parser.NewParser(),
 		ctx:      ctx,
 		cancel:   cancel,
 	}
@@ -83,7 +83,7 @@ func (s *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 
 	for {
-		req, err := s.parser.ReadRequest()
+		req, err := s.parser.ReadRequest(conn)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				slog.Info("connection closed", "remote", conn.RemoteAddr())

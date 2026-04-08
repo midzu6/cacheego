@@ -11,13 +11,10 @@ import (
 )
 
 type Parser struct {
-	r *bufio.Reader
 }
 
-func NewParser(r io.Reader) *Parser {
-	return &Parser{
-		r: bufio.NewReader(r),
-	}
+func NewParser() *Parser {
+	return &Parser{}
 }
 
 type Request struct {
@@ -25,32 +22,33 @@ type Request struct {
 	Args []Value
 }
 
-func (p *Parser) ReadValue() (Value, error) {
-	commandType, err := p.r.ReadByte()
+func (p *Parser) ReadValue(r io.Reader) (Value, error) {
+	br := bufio.NewReader(r)
+	commandType, err := br.ReadByte()
 	if err != nil {
 		return nil, err
 	}
 
 	switch commandType {
 	case '*':
-		return p.parseArray()
+		return p.parseArray(br)
 	case '$':
-		return p.parseBulkString()
+		return p.parseBulkString(br)
 	case ':':
-		return p.parseInteger()
+		return p.parseInteger(br)
 	case '-':
-		return p.parseError()
+		return p.parseError(br)
 	case '+':
-		return p.parseSimpleString()
+		return p.parseSimpleString(br)
 	case '_':
-		return p.parseNull()
+		return p.parseNull(br)
 	default:
 		return ErrorValue{"ERR unknown RESP type"}, nil
 	}
 }
 
-func readLine(r *bufio.Reader) (string, error) {
-	line, err := r.ReadString('\n')
+func readLine(br *bufio.Reader) (string, error) {
+	line, err := br.ReadString('\n')
 	if err != nil {
 		return "", err
 	}
@@ -61,8 +59,8 @@ func readLine(r *bufio.Reader) (string, error) {
 	return line[:lineLen-2], nil
 }
 
-func (p *Parser) parseArray() (Value, error) {
-	line, err := readLine(p.r)
+func (p *Parser) parseArray(br *bufio.Reader) (Value, error) {
+	line, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse ArrayValue: %w", err)
 	}
@@ -75,7 +73,7 @@ func (p *Parser) parseArray() (Value, error) {
 	}
 	items := make([]Value, 0, count)
 	for range count {
-		val, err := p.ReadValue()
+		val, err := p.ReadValue(br)
 		if err != nil {
 			return nil, err
 		}
@@ -84,8 +82,9 @@ func (p *Parser) parseArray() (Value, error) {
 	return ArrayValue{Data: items}, nil
 }
 
-func (p *Parser) ReadRequest() (*Request, error) {
-	val, err := p.ReadValue()
+func (p *Parser) ReadRequest(r io.Reader) (*Request, error) {
+	br := bufio.NewReader(r)
+	val, err := p.ReadValue(br)
 	if err != nil {
 		return nil, err
 	}
@@ -107,16 +106,16 @@ func (p *Parser) ReadRequest() (*Request, error) {
 	}, nil
 }
 
-func (p *Parser) parseSimpleString() (Value, error) {
-	line, err := readLine(p.r)
+func (p *Parser) parseSimpleString(br *bufio.Reader) (Value, error) {
+	line, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse SimpleStringValue: %w", err)
 	}
 	return SimpleStringValue{Data: []byte(line)}, nil
 }
 
-func (p *Parser) parseBulkString() (Value, error) {
-	line, err := readLine(p.r)
+func (p *Parser) parseBulkString(br *bufio.Reader) (Value, error) {
+	line, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse BulkStringValue: %w", err)
 	}
@@ -128,12 +127,12 @@ func (p *Parser) parseBulkString() (Value, error) {
 		return nil, fmt.Errorf("error convert string to int: %w", err)
 	}
 	data := make([]byte, n)
-	_, err = io.ReadFull(p.r, data)
+	_, err = io.ReadFull(br, data)
 	if err != nil {
 		return nil, err
 	}
 	crlf := make([]byte, 2)
-	_, err = io.ReadFull(p.r, crlf)
+	_, err = io.ReadFull(br, crlf)
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +142,8 @@ func (p *Parser) parseBulkString() (Value, error) {
 	return BulkStringValue{Data: data}, nil
 }
 
-func (p *Parser) parseInteger() (Value, error) {
-	line, err := readLine(p.r)
+func (p *Parser) parseInteger(br *bufio.Reader) (Value, error) {
+	line, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse IntegerValue: %w", err)
 	}
@@ -155,8 +154,8 @@ func (p *Parser) parseInteger() (Value, error) {
 	return IntegerValue{Value: num}, nil
 }
 
-func (p *Parser) parseError() (Value, error) {
-	line, err := readLine(p.r)
+func (p *Parser) parseError(br *bufio.Reader) (Value, error) {
+	line, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse ErrorValue: %w", err)
 	}
@@ -164,8 +163,8 @@ func (p *Parser) parseError() (Value, error) {
 	return ErrorValue{Message: line}, nil
 }
 
-func (p *Parser) parseNull() (Value, error) {
-	_, err := readLine(p.r)
+func (p *Parser) parseNull(br *bufio.Reader) (Value, error) {
+	_, err := readLine(br)
 	if err != nil {
 		return nil, fmt.Errorf("error parse NullValue: %w", err)
 	}
