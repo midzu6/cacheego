@@ -22,8 +22,7 @@ type Request struct {
 	Args []Value
 }
 
-func (p *Parser) ReadValue(r io.Reader) (Value, error) {
-	br := bufio.NewReader(r)
+func (p *Parser) ReadValue(br *bufio.Reader) (Value, error) {
 	commandType, err := br.ReadByte()
 	if err != nil {
 		return nil, err
@@ -64,12 +63,15 @@ func (p *Parser) parseArray(br *bufio.Reader) (Value, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parse ArrayValue: %w", err)
 	}
-	count, convErr := strconv.ParseInt(line, 10, 64)
+	count, convErr := strconv.Atoi(line)
 	if convErr != nil {
 		return nil, fmt.Errorf("error convert string to int: %w", convErr)
 	}
 	if count == -1 {
 		return NullValue{}, nil // RESP null array
+	}
+	if count < 0 {
+		return nil, errors.New("ERR negative array length")
 	}
 	items := make([]Value, 0, count)
 	for range count {
