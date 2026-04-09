@@ -16,6 +16,7 @@ type Store interface {
 	Delete(keys ...string) int64
 	StartExpiry(ctx context.Context)
 	RPush(key string, values ...string) (int64, error)
+	LRange(key string, start, stop int) ([]string, error)
 }
 
 type store struct {
@@ -147,4 +148,44 @@ func (s *store) push(key string, values []string, left bool) (int64, error) {
 	}
 	s.data[key] = lv
 	return lv.Size(), nil
+}
+
+func (s *store) LRange(key string, start, stop int) ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	val, exists := s.data[key]
+	if !exists {
+		return []string{}, nil
+	}
+
+	lv, ok := val.(ListValue)
+	if !ok {
+		return nil, errors.New("ERR WRONGTYPE Operation against a key holding the wrong kind of value")
+	}
+
+	length := int(lv.Size())
+
+	if start > stop || start >= length {
+		return []string{}, nil
+	}
+
+	if stop >= length {
+		stop = length - 1
+	}
+
+	result := make([]string, 0, stop-start+1)
+
+	i := 0
+	for e := lv.Data.Front(); e != nil; e.Next() {
+		if i > stop {
+			break
+		}
+		if i >= start {
+			result = append(result, e.Value.(string))
+		}
+		i++
+	}
+
+	return result, nil
 }
