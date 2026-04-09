@@ -122,3 +122,40 @@ func (rp *RpushCommand) Execute(args []parser.Value, st store.Store) (parser.Val
 
 	return parser.IntegerValue{Value: newLen}, nil
 }
+
+type LRangeCommand struct{}
+
+func (lrc *LRangeCommand) Name() string {
+	return "LRANGE"
+}
+
+func (lrc *LRangeCommand) Execute(args []parser.Value, st store.Store) (parser.Value, error) {
+	if len(args) < 3 {
+		return nil, errors.New("ERR wrong number of arguments for 'LRANGE' command")
+	}
+	key := args[0].String()
+	startStr := args[1].String()
+	stopStr := args[2].String()
+	start, err := strconv.Atoi(startStr)
+	if err != nil {
+		return nil, errors.New("ERR value is not an integer or out of range")
+	}
+
+	stop, err := strconv.Atoi(stopStr)
+	if err != nil {
+		return nil, errors.New("ERR value is not an integer or out of range")
+	}
+
+	arr, err := st.LRange(key, start, stop)
+	if err != nil {
+		return nil, err
+	}
+	data := make([]parser.Value, 0, len(arr))
+	for _, v := range arr {
+		val := parser.BulkStringValue{Data: []byte(v)}
+		data = append(data, val)
+	}
+
+	return parser.ArrayValue{Data: data}, nil
+
+}
