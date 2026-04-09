@@ -177,7 +177,7 @@ func (s *store) LRange(key string, start, stop int) ([]string, error) {
 	result := make([]string, 0, stop-start+1)
 
 	i := 0
-	for e := lv.Data.Front(); e != nil; e.Next() {
+	for e := lv.Data.Front(); e != nil; e = e.Next() {
 		if i > stop {
 			break
 		}
